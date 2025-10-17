@@ -6,11 +6,14 @@ import { NextResponse } from 'next/server'
 let client
 let db
 
+const DB_NAME = 'loanflow'
+
 async function connectToMongo() {
   if (!client) {
     client = new MongoClient(process.env.MONGO_URL)
     await client.connect()
-    db = client.db(process.env.DB_NAME)
+    db = client.db(DB_NAME)
+    console.log('Connected to MongoDB')
   }
   return db
 }
@@ -19,9 +22,35 @@ async function connectToMongo() {
 function handleCORS(response) {
   response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Loan-Session')
   response.headers.set('Access-Control-Allow-Credentials', 'true')
   return response
+}
+
+// Generate JWT token (mock implementation)
+function generateToken(user) {
+  return Buffer.from(JSON.stringify({ userId: user.id, timestamp: Date.now() })).toString('base64')
+}
+
+// Verify JWT token (mock implementation)
+function verifyToken(token) {
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf8'))
+    return decoded
+  } catch {
+    return null
+  }
+}
+
+// Auth middleware
+function getAuthUser(request) {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null
+  }
+  
+  const token = authHeader.substring(7)
+  return verifyToken(token)
 }
 
 // OPTIONS handler for CORS
@@ -36,7 +65,7 @@ async function handleRoute(request, { params }) {
   const method = request.method
 
   try {
-    const db = await connectToMongo()
+    const database = await connectToMongo()
 
     // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
     if (route === '/root' && method === 'GET') {
@@ -47,38 +76,262 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json({ message: "Hello World" }))
     }
 
-    // Status endpoints - POST /api/status
-    if (route === '/status' && method === 'POST') {
+    // ============ AUTH ENDPOINTS ============
+    
+    // POST /api/auth/signup
+    if (route === '/auth/signup' && method === 'POST') {
       const body = await request.json()
+      const { name, phone, email, password } = body
       
-      if (!body.client_name) {
-        return handleCORS(NextResponse.json(
-          { error: "client_name is required" }, 
-          { status: 400 }
-        ))
+      const users = database.collection('users')
+      
+      // Check if user already exists
+      const existingUser = await users.findOne({ $or: [{ phone }, { email }] })
+      if (existingUser) {
+        return handleCORS(NextResponse.json({ 
+          success: false, 
+          message: 'User already exists with this phone or email' 
+        }, { status: 400 }))
       }
-
-      const statusObj = {
+      
+      // Create new user
+      const newUser = {
         id: uuidv4(),
-        client_name: body.client_name,
-        timestamp: new Date()
+        name,
+        phone,
+        email,
+        password,
+        createdAt: new Date()
       }
-
-      await db.collection('status_checks').insertOne(statusObj)
-      return handleCORS(NextResponse.json(statusObj))
+      
+      await users.insertOne(newUser)
+      
+      const token = generateToken(newUser)
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: newUser.id,
+          name: newUser.name,
+          phone: newUser.phone,
+          email: newUser.email
+        }
+      }))
     }
 
-    // Status endpoints - GET /api/status
-    if (route === '/status' && method === 'GET') {
-      const statusChecks = await db.collection('status_checks')
-        .find({})
-        .limit(1000)
-        .toArray()
-
-      // Remove MongoDB's _id field from response
-      const cleanedStatusChecks = statusChecks.map(({ _id, ...rest }) => rest)
+    // POST /api/auth/login
+    if (route === '/auth/login' && method === 'POST') {
+      const body = await request.json()
+      const { phone, password } = body
       
-      return handleCORS(NextResponse.json(cleanedStatusChecks))
+      const users = database.collection('users')
+      
+      // Find user
+      const user = await users.findOne({ phone, password })
+      
+      if (!user) {
+        return handleCORS(NextResponse.json({ 
+          success: false, 
+          message: 'Invalid phone number or password' 
+        }, { status: 401 }))
+      }
+      
+      const token = generateToken(user)
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email
+        }
+      }))
+    }
+
+    // ============ LOAN ENDPOINTS ============
+    
+    // POST /api/loan/check-eligibility
+    if (route === '/loan/check-eligibility' && method === 'POST') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const body = await request.json()
+      const { phone } = body
+      
+      // Generate session token for this loan application
+      const sessionToken = uuidv4()
+      
+      // Mock logic: randomly assign loan type based on phone number
+      const lastDigit = parseInt(phone.slice(-1))
+      let loanType = 'manual'
+      
+      if (lastDigit >= 0 && lastDigit <= 3) {
+        loanType = 'pre-approved'
+      } else if (lastDigit >= 4 && lastDigit <= 6) {
+        loanType = 'credit-card'
+      }
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        loanType,
+        sessionToken,
+        message: `Eligibility checked for ${phone}`
+      }))
+    }
+
+    // POST /api/loan/verify-pan
+    if (route === '/loan/verify-pan' && method === 'POST') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const body = await request.json()
+      const { panLast4 } = body
+      const sessionToken = request.headers.get('X-Loan-Session')
+      
+      if (!sessionToken) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Invalid session' }, { status: 400 }))
+      }
+      
+      const loans = database.collection('loans')
+      
+      // Create loan record
+      const newLoan = {
+        id: uuidv4(),
+        userId: authUser.userId,
+        type: 'Pre-Approved Loan',
+        amount: 500000,
+        status: 'pending',
+        sessionToken,
+        panLast4,
+        createdAt: new Date(),
+        nextPayment: '15 Jul 2025',
+        tenure: 24,
+        interestRate: 9.5
+      }
+      
+      await loans.insertOne(newLoan)
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'PAN verified successfully',
+        loanId: newLoan.id
+      }))
+    }
+
+    // POST /api/loan/map-card
+    if (route === '/loan/map-card' && method === 'POST') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const body = await request.json()
+      const sessionToken = request.headers.get('X-Loan-Session')
+      
+      if (!sessionToken) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Invalid session' }, { status: 400 }))
+      }
+      
+      const loans = database.collection('loans')
+      
+      // Create loan record
+      const newLoan = {
+        id: uuidv4(),
+        userId: authUser.userId,
+        type: 'Credit Card EMI',
+        amount: 250000,
+        status: 'active',
+        sessionToken,
+        cardLast4: body.cardNumber.slice(-4),
+        createdAt: new Date(),
+        nextPayment: '10 Jul 2025',
+        tenure: 12,
+        interestRate: 11.5
+      }
+      
+      await loans.insertOne(newLoan)
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'Card mapped successfully',
+        loanId: newLoan.id
+      }))
+    }
+
+    // POST /api/loan/submit-manual
+    if (route === '/loan/submit-manual' && method === 'POST') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const body = await request.json()
+      const sessionToken = request.headers.get('X-Loan-Session')
+      
+      if (!sessionToken) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Invalid session' }, { status: 400 }))
+      }
+      
+      const loans = database.collection('loans')
+      
+      // Create loan record
+      const newLoan = {
+        id: uuidv4(),
+        userId: authUser.userId,
+        type: 'Personal Loan',
+        amount: parseInt(body.loanAmount),
+        status: 'pending',
+        sessionToken,
+        applicationData: body,
+        createdAt: new Date(),
+        nextPayment: 'Pending Approval',
+        tenure: 24,
+        interestRate: 12.5
+      }
+      
+      await loans.insertOne(newLoan)
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        message: 'Application submitted successfully',
+        loanId: newLoan.id
+      }))
+    }
+
+    // GET /api/loan/ongoing
+    if (route === '/loan/ongoing' && method === 'GET') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const loans = database.collection('loans')
+      
+      // Find all loans for this user
+      const userLoans = await loans.find({ userId: authUser.userId }).toArray()
+      
+      // Format loans for frontend
+      const formattedLoans = userLoans.map(loan => ({
+        id: loan.id,
+        type: loan.type,
+        amount: loan.amount,
+        status: loan.status,
+        nextPayment: loan.nextPayment,
+        tenure: loan.tenure,
+        interestRate: loan.interestRate
+      }))
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        loans: formattedLoans
+      }))
     }
 
     // Route not found
@@ -90,7 +343,7 @@ async function handleRoute(request, { params }) {
   } catch (error) {
     console.error('API Error:', error)
     return handleCORS(NextResponse.json(
-      { error: "Internal server error" }, 
+      { error: "Internal server error", message: error.message }, 
       { status: 500 }
     ))
   }
