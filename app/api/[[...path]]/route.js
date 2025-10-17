@@ -161,26 +161,109 @@ async function handleRoute(request, { params }) {
       }
       
       const body = await request.json()
-      const { phone } = body
+      const { phone, loanAmount } = body
       
       // Generate session token for this loan application
       const sessionToken = uuidv4()
       
-      // Mock logic: randomly assign loan type based on phone number
+      // Mock eligibility check - determine user's eligibility
       const lastDigit = parseInt(phone.slice(-1))
-      let loanType = 'manual'
       
-      if (lastDigit >= 0 && lastDigit <= 3) {
-        loanType = 'pre-approved'
-      } else if (lastDigit >= 4 && lastDigit <= 6) {
-        loanType = 'credit-card'
+      // Determine eligibility status
+      const eligibilityStatus = {
+        hasPreApproved: lastDigit <= 5,
+        preApprovedAmount: lastDigit <= 5 ? 500000 : 0,
+        hasCreditCard: lastDigit >= 3 && lastDigit <= 7,
+        creditCardLimit: lastDigit >= 3 && lastDigit <= 7 ? 250000 : 0
       }
+      
+      // Mock NBFC options based on eligibility
+      const nbfcOptions = []
+      
+      if (eligibilityStatus.hasPreApproved) {
+        nbfcOptions.push({
+          id: 'nbfc1',
+          name: 'HealthFin Financial Services',
+          description: 'Leading healthcare financing partner with quick approvals',
+          interestRate: 9.5,
+          processingFee: '1% + GST',
+          maxTenure: 24,
+          recommended: true,
+          approvalType: 'pre-approved'
+        })
+      }
+      
+      if (eligibilityStatus.hasCreditCard) {
+        nbfcOptions.push({
+          id: 'nbfc2',
+          name: 'MediCard EMI Solutions',
+          description: 'Instant EMI on your existing credit card',
+          interestRate: 11.5,
+          processingFee: '2% + GST',
+          maxTenure: 18,
+          recommended: false,
+          approvalType: 'credit-card'
+        })
+      }
+      
+      // Always add manual option
+      nbfcOptions.push({
+        id: 'nbfc3',
+        name: 'CareCredit NBFC',
+        description: 'Flexible medical loans for all healthcare needs',
+        interestRate: 12.5,
+        processingFee: '1.5% + GST',
+        maxTenure: 36,
+        recommended: !eligibilityStatus.hasPreApproved && !eligibilityStatus.hasCreditCard,
+        approvalType: 'manual'
+      })
       
       return handleCORS(NextResponse.json({
         success: true,
-        loanType,
         sessionToken,
+        eligibilityStatus,
+        nbfcOptions,
         message: `Eligibility checked for ${phone}`
+      }))
+    }
+
+    // GET /api/hospital/details
+    if (route === '/hospital/details' && method === 'GET') {
+      const authUser = getAuthUser(request)
+      if (!authUser) {
+        return handleCORS(NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }))
+      }
+      
+      const url = new URL(request.url)
+      const hospitalCode = url.searchParams.get('code') || 'H001'
+      
+      // Mock hospital data
+      const hospitals = {
+        'H001': {
+          code: 'H001',
+          name: 'Apollo Hospitals',
+          location: 'Chennai, Tamil Nadu',
+          type: 'Multi-Specialty Hospital'
+        },
+        'H002': {
+          code: 'H002',
+          name: 'Fortis Healthcare',
+          location: 'Mumbai, Maharashtra',
+          type: 'Super Specialty Hospital'
+        },
+        'H003': {
+          code: 'H003',
+          name: 'Max Healthcare',
+          location: 'Delhi NCR',
+          type: 'Multi-Specialty Hospital'
+        }
+      }
+      
+      const hospital = hospitals[hospitalCode] || hospitals['H001']
+      
+      return handleCORS(NextResponse.json({
+        success: true,
+        hospital
       }))
     }
 
