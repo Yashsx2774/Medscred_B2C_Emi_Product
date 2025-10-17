@@ -10,8 +10,9 @@ const Navbar = () => {
   return (
     <nav className="bg-white border-b border-border">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-bold text-primary">
-          LoanFlow
+        <Link href="/" className="flex items-center space-x-2">
+          <div className="text-2xl font-bold text-primary">Medscred</div>
+          <div className="text-xs text-muted-foreground hidden sm:block">by Empower Fintech</div>
         </Link>
         
         <div className="flex items-center gap-4">
@@ -20,7 +21,7 @@ const Navbar = () => {
               <Link href="/dashboard">
                 <Button variant="ghost">Dashboard</Button>
               </Link>
-              <span className="text-sm text-muted-foreground">Welcome, {user.name}</span>
+              <span className="text-sm text-muted-foreground hidden sm:block">Welcome, {user.name}</span>
               <Button onClick={logout} variant="outline">Logout</Button>
             </>
           ) : (
