@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
@@ -18,7 +18,7 @@ const TreatmentDetailsPage = () => {
   const [loading, setLoading] = useState(false)
   const { user, token } = useAuth()
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
   const hospitalCode = searchParams.get('hospital') || 'H001'
 
   useEffect(() => {
@@ -74,8 +74,8 @@ const TreatmentDetailsPage = () => {
       }
       localStorage.setItem('treatmentDetails', JSON.stringify(treatmentData))
 
-      // Proceed to eligibility check
-      router.push('/loan/nbfc-select')
+      // Navigate to financing method selection instead of NBFC directly
+      router.push('/loan/financing-method')
     } catch (err) {
       setError('An error occurred. Please try again.')
     } finally {
@@ -95,89 +95,106 @@ const TreatmentDetailsPage = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 flex justify-center">
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <CardTitle className="text-2xl">Treatment Details</CardTitle>
-          <CardDescription>
-            Enter your treatment and loan requirements
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Hospital Information */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-3 text-blue-900">Hospital Information</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-blue-700">Name:</span>
-                <span className="font-semibold text-blue-900">{hospitalDetails.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-700">Location:</span>
-                <span className="font-semibold text-blue-900">{hospitalDetails.location}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-700">Hospital Code:</span>
-                <span className="font-semibold text-blue-900">{hospitalDetails.code}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-blue-700">Type:</span>
-                <span className="font-semibold text-blue-900">{hospitalDetails.type}</span>
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white py-8">
+      <div className="container mx-auto px-4 flex justify-center">
+        <Card className="w-full max-w-2xl shadow-xl border-2 animate-fade-in-up">
+          <CardHeader>
+            <div className="text-center mb-2">
+              <div className="inline-block bg-gradient-to-r from-blue-100 to-green-100 px-4 py-2 rounded-full text-sm font-semibold mb-4">
+                🏥 Step 1 of 5
               </div>
             </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <InputField
-              id="treatmentDescription"
-              label="Treatment Description"
-              type="text"
-              placeholder="e.g., Cardiac Surgery, Orthopedic Treatment"
-              value={formData.treatmentDescription}
-              onChange={(e) => setFormData({ ...formData, treatmentDescription: e.target.value })}
-              required
-            />
-
-            <InputField
-              id="treatmentAmount"
-              label="Treatment Amount (₹)"
-              type="number"
-              placeholder="Enter total treatment cost"
-              value={formData.treatmentAmount}
-              onChange={(e) => setFormData({ ...formData, treatmentAmount: e.target.value })}
-              required
-              min="1000"
-            />
-
-            <InputField
-              id="loanAmount"
-              label="Loan Amount Required (₹)"
-              type="number"
-              placeholder="Enter loan amount needed"
-              value={formData.loanAmount}
-              onChange={(e) => setFormData({ ...formData, loanAmount: e.target.value })}
-              required
-              min="1000"
-            />
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-800">
-                <strong>Note:</strong> Loan amount must be less than or equal to treatment amount. Minimum loan amount is ₹1,000.
-              </p>
+            <CardTitle className="text-3xl text-center">Treatment Details</CardTitle>
+            <CardDescription className="text-center text-base">
+              Enter your treatment and loan requirements
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Hospital Information */}
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-xl p-6 mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-2xl">
+                  🏥
+                </div>
+                <h3 className="text-lg font-semibold text-blue-900">Hospital Information</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-sm text-blue-700">Name:</span>
+                  <div className="font-semibold text-blue-900">{hospitalDetails.name}</div>
+                </div>
+                <div>
+                  <span className="text-sm text-blue-700">Location:</span>
+                  <div className="font-semibold text-blue-900">{hospitalDetails.location}</div>
+                </div>
+                <div>
+                  <span className="text-sm text-blue-700">Code:</span>
+                  <div className="font-semibold text-blue-900">{hospitalDetails.code}</div>
+                </div>
+                <div>
+                  <span className="text-sm text-blue-700">Type:</span>
+                  <div className="font-semibold text-blue-900">{hospitalDetails.type}</div>
+                </div>
+              </div>
             </div>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                {error}
-              </div>
-            )}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <InputField
+                id="treatmentDescription"
+                label="Treatment Description"
+                type="text"
+                placeholder="e.g., Cardiac Surgery, Orthopedic Treatment"
+                value={formData.treatmentDescription}
+                onChange={(e) => setFormData({ ...formData, treatmentDescription: e.target.value })}
+                required
+              />
 
-            <Button type="submit" className="w-full" size="lg" disabled={loading}>
-              {loading ? 'Processing...' : 'Continue to NBFC Selection'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <InputField
+                id="treatmentAmount"
+                label="Treatment Amount (₹)"
+                type="number"
+                placeholder="Enter total treatment cost"
+                value={formData.treatmentAmount}
+                onChange={(e) => setFormData({ ...formData, treatmentAmount: e.target.value })}
+                required
+                min="1000"
+              />
+
+              <InputField
+                id="loanAmount"
+                label="Loan Amount Required (₹)"
+                type="number"
+                placeholder="Enter loan amount needed"
+                value={formData.loanAmount}
+                onChange={(e) => setFormData({ ...formData, loanAmount: e.target.value })}
+                required
+                min="1000"
+              />
+
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Note:</strong> Loan amount must be less than or equal to treatment amount. Minimum loan amount is ₹1,000.
+                </p>
+              </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                  {error}
+                </div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="w-full py-6 text-lg bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 shadow-lg" 
+                size="lg" 
+                disabled={loading}
+              >
+                {loading ? 'Processing...' : 'Continue to Financing Options →'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
