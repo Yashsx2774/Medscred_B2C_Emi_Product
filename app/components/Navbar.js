@@ -3,6 +3,7 @@
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Heart, User, LogOut, Menu } from 'lucide-react'
 import { useState } from 'react'
 
@@ -15,16 +16,14 @@ const Navbar = () => {
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-green-600 rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-all">
-              <Heart className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                Medscred
-              </div>
-              <div className="text-xs text-muted-foreground hidden sm:block">by Empower Fintech</div>
-            </div>
+          <Link href="/" className="flex items-center group">
+            <Image 
+              src="/logo.png" 
+              alt="Logo" 
+              width={120} 
+              height={40}
+              priority
+            />
           </Link>
           
           {/* Desktop Menu */}
@@ -79,7 +78,7 @@ const Navbar = () => {
                   </Button>
                 </Link>
                 <Link href="/signup">
-                  <Button className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 shadow-md hover:shadow-lg transition-all">
+                  <Button variant="ghost" className="hover:bg-blue-50 transition-colors">
                     Sign Up
                   </Button>
                 </Link>

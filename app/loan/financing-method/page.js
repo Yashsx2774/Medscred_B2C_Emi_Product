@@ -1,20 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Zap, CreditCard, FileText, CheckCircle, ArrowRight, Sparkles } from 'lucide-react'
+import { checkEligibilityAndGetOffers } from '../../services/apiService'
+import { useLoanFlow } from '../../contexts/LoanFlowContext'
 
-const FinancingMethodPage = () => {
+const FinancingMethodContent = () => {
   const [eligibility, setEligibility] = useState(null)
   const [selectedMethod, setSelectedMethod] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const { user, token } = useAuth()
   const router = useRouter()
+  const { applicationId, hospitalId, loanAmount } = useLoanFlow(); // --- 2. Backpack se saaman nikalo ---
+  const searchParams = useSearchParams();
+
+    const appId = searchParams.get('appId') || applicationId;
 
   useEffect(() => {
     if (!user) {
@@ -33,20 +39,8 @@ const FinancingMethodPage = () => {
 
   const checkEligibility = async () => {
     try {
-      const response = await fetch('/api/loan/check-eligibility', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ phone: user.phone })
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        setEligibility(data.eligibilityStatus)
-        localStorage.setItem('loanSessionToken', data.sessionToken)
-      }
+      const data = await checkEligibilityAndGetOffers(token, JSON.parse(localStorage.getItem('treatmentDetails') || '{}').loanAmount || 50000)
+      setEligibility(data.eligibilityStatus)
     } catch (error) {
       console.error('Failed to check eligibility:', error)
     } finally {
@@ -61,7 +55,7 @@ const FinancingMethodPage = () => {
     localStorage.setItem('selectedFinancingMethod', selectedMethod)
     
     // Navigate to NBFC selection with the chosen method
-    router.push(`/loan/nbfc-select?method=${selectedMethod}`)
+    router.push(`/loan/nbfc-select/${appId}?method=${selectedMethod}&hospitalId=${hospitalId}&amount=${loanAmount}`)
   }
 
   const financingMethods = [
@@ -295,6 +289,15 @@ const FinancingMethodPage = () => {
         </div>
       </div>
     </div>
+  )
+}
+
+const FinancingMethodPage = () => {
+  return (
+    // --- Suspense se wrap karo ---
+    <Suspense fallback={<div>Loading...</div>}>
+      <FinancingMethodContent />
+    </Suspense>
   )
 }
 

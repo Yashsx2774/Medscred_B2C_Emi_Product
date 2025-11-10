@@ -10,29 +10,29 @@ import Link from 'next/link'
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
-    phone: '',
+    email: '',
     password: ''
-  })
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
-  const router = useRouter()
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const router = useRouter();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
 
-    const result = await login(formData)
-    
-    if (result.success) {
-      router.push('/dashboard')
-    } else {
-      setError(result.message || 'Login failed')
-    }
-    
-    setLoading(false)
+  const result = await login(formData);
+  
+  if (result.success === true) {
+    // Use a hard redirect to ensure the page reloads correctly
+    router.push('/dashboard');
+  } else {
+    setError(result.message || 'Login failed');
+    setLoading(false); // Only stop loading on failure
   }
+}
 
   return (
     <div className="container mx-auto px-4 py-16 flex justify-center">
@@ -43,13 +43,14 @@ const LoginPage = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* --- CHANGE #2: Updated the InputField for Email --- */}
             <InputField
-              id="phone"
-              label="Phone Number"
-              type="tel"
-              placeholder="Enter your phone number"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              id="email"
+              label="Email Address"
+              type="email"
+              placeholder="Enter your email address"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
             />
             
@@ -86,4 +87,4 @@ const LoginPage = () => {
   )
 }
 
-export default LoginPage
+export default LoginPage;

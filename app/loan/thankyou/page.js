@@ -1,19 +1,25 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuth } from '../../contexts/AuthContext'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
-const ThankYouPage = () => {
+const ThankYouContent = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const appId = searchParams.get('appId')
+  const { token, user, loading } = useAuth()
 
   useEffect(() => {
-    // Clear loan session token
-    localStorage.removeItem('loanSessionToken')
-    localStorage.removeItem('loanPhone')
-  }, [])
+    if (loading) return
+    if (!token || !user) {
+      router.push('/login')
+      return
+    }
+  }, [loading, token, user, router])
 
   return (
     <div className="container mx-auto px-4 py-16 flex justify-center">
@@ -45,7 +51,7 @@ const ThankYouPage = () => {
               </Button>
             </Link>
             
-            <Link href="/loan/start" className="block">
+            <Link href="/loan/treatment" className="block">
               <Button variant="outline" className="w-full">
                 Apply for Another Loan
               </Button>
@@ -63,6 +69,15 @@ const ThankYouPage = () => {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+const ThankYouPage = () => {
+  return (
+    // --- Suspense se wrap karo ---
+    <Suspense fallback={<div>Loading...</div>}>
+      <ThankYouContent />
+    </Suspense>
   )
 }
 

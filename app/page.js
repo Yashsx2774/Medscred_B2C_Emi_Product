@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from './contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle, Heart, Users, Shield, TrendingUp } from 'lucide-react'
 
-const HomePage = () => {
+const HomeContent = () => {
   const { user, loading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -303,6 +303,15 @@ const HomePage = () => {
         </div>
       </section>
     </div>
+  )
+}
+
+const HomePage = () => {
+  return (
+    // --- Suspense se wrap karo ---
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }
 

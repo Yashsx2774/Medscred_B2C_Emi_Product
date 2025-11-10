@@ -1,84 +1,108 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { getEligibleOffers, startApplication } from '../../services/apiService'
+import { useLoanFlow } from '../../contexts/LoanFlowContext'; // --- 1. Naya hook import karo
 
-const NBFCSelectionPage = () => {
+const NBFCSelectionContent = () => {
   const [nbfcList, setNbfcList] = useState([])
-  const [selectedNBFC, setSelectedNBFC] = useState('')
+  const [selectedNBFCId, setSelectedNBFCId] = useState('') // Renamed for clarity
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { user, token } = useAuth()
+  const { user, token, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const amount = parseFloat(searchParams.get('amount') || '0')
+  const { loanAmount, setFlowDetails, hospitalId } = useLoanFlow();
 
   useEffect(() => {
-    if (!user) {
+    if (authLoading) return
+    if (!token || !user) {
       router.push('/login')
       return
     }
-
-    const treatmentDetails = localStorage.getItem('treatmentDetails')
-    if (!treatmentDetails) {
+    if (!amount || amount <= 0) {
       router.push('/loan/treatment')
       return
     }
-
     fetchNBFCOptions()
-  }, [user])
+  }, [authLoading, token, user, amount])
 
   const fetchNBFCOptions = async () => {
     try {
-      const treatmentDetails = JSON.parse(localStorage.getItem('treatmentDetails'))
-      const response = await fetch('/api/loan/check-eligibility', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          phone: user.phone,
-          loanAmount: treatmentDetails.loanAmount
-        })
-      })
+      const resp = await getEligibleOffers(token, amount)
+      console.log('Fetched NBFC options:', resp)
+      const offers = Array.isArray(resp?.offers) ? resp.offers : []
 
-      const data = await response.json()
-      if (data.success) {
-        setNbfcList(data.nbfcOptions || [])
-        localStorage.setItem('loanSessionToken', data.sessionToken)
-      }
+      // --- CHANGE 1: DATA NORMALIZATION (Best Practice) ---
+      // Har offer ke liye ek common 'id' field bana lo taaki aage confusion na ho.
+      const formattedOffers = offers.map(offer => ({
+        ...offer,
+        // Sabke liye ek hi 'id' use karo, chahe woh 'offerId' se aaye ya 'id' se.
+        id: offer.offerId?.toString() || offer.id?.toString()
+      }));
+      setNbfcList(formattedOffers);
+
     } catch (error) {
       console.error('Failed to fetch NBFC options:', error)
       setError('Failed to load NBFC options')
     }
   }
 
-  const handleContinue = () => {
-    if (!selectedNBFC) {
+  const handleContinue = async () => {
+    if (!selectedNBFCId) {
       setError('Please select an NBFC to continue')
       return
     }
 
-    setLoading(true)
-    localStorage.setItem('selectedNBFC', selectedNBFC)
-    
-    // Route based on NBFC type
-    const selected = nbfcList.find(n => n.id === selectedNBFC)
-    if (selected) {
-      switch (selected.approvalType) {
-        case 'pre-approved':
-          router.push('/loan/emi-select?type=preapproved')
-          break
-        case 'credit-card':
-          router.push('/loan/emi-select?type=creditcard')
-          break
-        default:
-          router.push('/loan/manual')
+    setLoading(true);
+    setError(''); // Clear previous errors
+    try {
+      const selected = nbfcList.find(n => n.id === selectedNBFCId);
+      const payload = {
+        loanOfferId: selected.offerId,
+        type: selected.type,
+        appliedAmount: amount,
+        provider: selected.provider,
+        hospitalId: hospitalId
+      };
+
+      const res = await startApplication(token, payload);
+      const appId = res?.applicationId;
+      if (!appId) {
+        throw new Error('Could not create application. No application ID returned.');
       }
+
+      setFlowDetails({ applicationId: appId })
+
+       // --- 4. THE MAIN CHANGE: Ab offer ke type ke hisaab se user ko aage bhejo ---
+            switch (selected.type) {
+                case 'PREAPPROVED':
+                    router.push(`/loan/pan-confirm?appId=${appId}&hospitalId=${hospitalId}&amount=${amount}`); // ab URL mein kuch bhejne ki zaroorat nahi
+                    break;
+                case 'CREDITCARD':
+                    router.push(`/loan/creditcard?appId=${appId}&hospitalId=${hospitalId}&amount=${amount}`); // ab URL mein kuch bhejne ki zaroorat nahi
+                    break;
+                case 'MANUAL':
+                default:
+                    // Manual flow ke liye, EMI selection page par jao
+                    router.push(`/loan/manual?appId=${appId}&hospitalId=${hospitalId}&amount=${amount}`); // ab URL mein kuch bhejne ki zaroorat nahi
+                    break;
+            }
+
+
+    } catch (e) {
+      console.error('Failed to start application:', e);
+      // Show a more user-friendly error from the API if it exists
+      setError(e.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -86,55 +110,33 @@ const NBFCSelectionPage = () => {
     <div className="container mx-auto px-4 py-8 flex justify-center">
       <Card className="w-full max-w-3xl">
         <CardHeader>
-          <CardTitle className="text-2xl">Select Your NBFC Partner</CardTitle>
+          <CardTitle className="text-2xl">Select Your Financing Partner</CardTitle>
           <CardDescription>
-            Choose from available NBFC options based on your eligibility
+            Choose from the best available options based on your eligibility
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {nbfcList.length === 0 ? (
+          {nbfcList.length === 0 && !error ? (
             <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading NBFC options...</p>
+              <p className="text-muted-foreground">Loading financing options...</p>
             </div>
           ) : (
             <div className="space-y-4">
-              <RadioGroup value={selectedNBFC} onValueChange={setSelectedNBFC}>
+              <RadioGroup value={selectedNBFCId} onValueChange={setSelectedNBFCId}>
                 {nbfcList.map((nbfc) => (
+                  // --- CHANGE 3: CLEANER JSX ---
+                  // Ab hum har jagah simple `nbfc.id` use kar sakte hain
                   <Card key={nbfc.id} className={`cursor-pointer transition-all ${
-                    selectedNBFC === nbfc.id ? 'border-primary border-2' : ''
+                    selectedNBFCId === nbfc.id ? 'border-primary border-2' : ''
                   }`}>
                     <CardContent className="pt-6">
                       <div className="flex items-start space-x-4">
                         <RadioGroupItem value={nbfc.id} id={nbfc.id} />
                         <Label htmlFor={nbfc.id} className="flex-1 cursor-pointer">
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="text-lg font-semibold">{nbfc.name}</h3>
-                                <p className="text-sm text-muted-foreground">{nbfc.description}</p>
-                              </div>
-                              {nbfc.recommended && (
-                                <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
-                                  Recommended
-                                </span>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-3 gap-4 mt-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Interest Rate</p>
-                                <p className="text-sm font-semibold">{nbfc.interestRate}% p.a.</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Processing Fee</p>
-                                <p className="text-sm font-semibold">{nbfc.processingFee}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Max Tenure</p>
-                                <p className="text-sm font-semibold">{nbfc.maxTenure} months</p>
-                              </div>
-                            </div>
-                          </div>
+                          {/* ... (The rest of your card content is perfect) ... */}
+                          <h3 className="text-lg font-semibold">{nbfc.provider}</h3>
+                          <p className="text-sm text-muted-foreground">{nbfc.type}</p>
+                          {/* ... etc. ... */}
                         </Label>
                       </div>
                     </CardContent>
@@ -143,7 +145,7 @@ const NBFCSelectionPage = () => {
               </RadioGroup>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                <div className="bg-red-50 text-red-700 px-4 py-3 rounded text-center">
                   {error}
                 </div>
               )}
@@ -152,9 +154,9 @@ const NBFCSelectionPage = () => {
                 onClick={handleContinue} 
                 className="w-full" 
                 size="lg" 
-                disabled={loading || !selectedNBFC}
+                disabled={loading || !selectedNBFCId}
               >
-                {loading ? 'Processing...' : 'Continue to EMI Selection'}
+                {loading ? 'Starting Application...' : 'Continue to EMI Selection'}
               </Button>
             </div>
           )}
@@ -164,4 +166,13 @@ const NBFCSelectionPage = () => {
   )
 }
 
-export default NBFCSelectionPage
+const NBFCSelectionPage = () => {
+  return (
+    // --- Suspense se wrap karo ---
+    <Suspense fallback={<div>Loading...</div>}>
+      <NBFCSelectionContent />
+    </Suspense>
+  )
+}
+
+export default NBFCSelectionPage;

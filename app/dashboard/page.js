@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -9,40 +9,92 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import LoanCard from '../components/LoanCard'
 import { Zap, CreditCard, TrendingUp, ArrowRight, Sparkles } from 'lucide-react'
+import { checkEligibilityAndGetOffers, getOngoingLoans } from '../services/apiService'
 
-const DashboardPage = () => {
+const DashboardContent = () => {
   const { user, token, loading } = useAuth()
   const [loans, setLoans] = useState([])
   const [eligibility, setEligibility] = useState(null)
   const [loadingLoans, setLoadingLoans] = useState(true)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const hospitalCode = searchParams.get('hospital') || 'H001'
+  // Changed from 'hospital' to 'hospitalId' for consistency
+  const hospitalId = searchParams.get('hospitalId') || searchParams.get('hospital') || null
+
+  // Toggle to force dashboard to use mock data
+  const USE_DASHBOARD_MOCK = false
+  const isMock = USE_DASHBOARD_MOCK
+
+  // Mock data for dashboard view
+  const MOCK_ELIGIBILITY = {
+    hasPreApproved: true,
+    preApprovedAmount: 150000,
+    hasCreditCard: true,
+    creditCardLimit: 80000,
+  }
+
+  const MOCK_LOANS = [
+    {
+      id: 'mock-loan-1',
+      type: 'Pre-Approved Loan',
+      amount: 120000,
+      status: 'active',
+      nextPayment: '15 Nov 2025',
+      tenure: 18,
+      interestRate: 10.5,
+    },
+    {
+      id: 'mock-loan-2',
+      type: 'Credit Card EMI',
+      amount: 45000,
+      status: 'pending',
+      nextPayment: '10 Nov 2025',
+      tenure: 12,
+      interestRate: 12.0,
+    },
+  ]
+
+  const MOCK_USER = {
+    id: 'mock-user-1',
+    name: 'Medscred User',
+    email: 'user@example.com',
+    phoneNumber: '9876543210',
+  }
+
+  const currentUser = isMock ? (user || MOCK_USER) : user
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isMock) return
+    if (loading) return
+    // Avoid false redirect during rehydration if data is present in localStorage
+    const storedToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+    const storedUser = typeof window !== 'undefined' ? localStorage.getItem('authUser') : null
+    const hasStoredSession = !!storedToken && !!storedUser
+    if (!token && !user && !hasStoredSession) {
       router.push('/login')
     }
-  }, [user, loading, router])
+  }, [isMock, user, token, loading, router])
 
   useEffect(() => {
-    if (user && token) {
+    if (isMock || (user && token)) {
       fetchLoans()
       checkEligibility()
     }
-  }, [user, token])
+  }, [isMock, user, token])
 
   const fetchLoans = async () => {
+    if (USE_DASHBOARD_MOCK) {
+      // Simulate brief network delay for nicer UX
+      setTimeout(() => {
+        setLoans(MOCK_LOANS)
+        setLoadingLoans(false)
+      }, 250)
+      return
+    }
+
     try {
-      const response = await fetch('/api/loan/ongoing', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      const data = await response.json()
-      if (data.success) {
-        setLoans(data.loans)
-      }
+      const data = await getOngoingLoans(token)
+      setLoans(Array.isArray(data.loans) ? data.loans : [])
     } catch (error) {
       console.error('Failed to fetch loans:', error)
     } finally {
@@ -51,29 +103,32 @@ const DashboardPage = () => {
   }
 
   const checkEligibility = async () => {
+    if (USE_DASHBOARD_MOCK) {
+      setTimeout(() => setEligibility(MOCK_ELIGIBILITY), 150)
+      return
+    }
+
     try {
-      const response = await fetch('/api/loan/check-eligibility', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ phone: user.phone })
-      })
-      const data = await response.json()
-      if (data.success) {
-        setEligibility(data.eligibilityStatus)
-      }
+      console.log('Checking eligibility with token:', token)
+      console.log('Requesting eligibility for amount: 50000')
+      const data = await checkEligibilityAndGetOffers(token, 50000)
+      setEligibility(data.eligibilityStatus || null)
     } catch (error) {
       console.error('Failed to check eligibility:', error)
     }
   }
 
   const handleStartApplication = () => {
-    router.push(`/loan/treatment?hospital=${hospitalCode}`)
+    // If hospitalId is present in URL, pass it to treatment page
+    // Otherwise, user will select from dropdown
+    if (hospitalId) {
+      router.push(`/loan/treatment?hospitalId=${hospitalId}`)
+    } else {
+      router.push(`/loan/treatment`)
+    }
   }
 
-  if (loading || !user) {
+  if (!isMock && (loading || !user)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -97,7 +152,7 @@ const DashboardPage = () => {
         {/* Welcome Section with Animation */}
         <div className="mb-8 animate-fade-in-up">
           <h1 className="text-4xl md:text-5xl font-bold mb-2">
-            {getGreeting()}, <span className="gradient-text">{user.name}</span>! 👋
+            {getGreeting()}, <span className="gradient-text">{currentUser.name}</span>! 👋
           </h1>
           <p className="text-lg text-muted-foreground">Let's take care of your healthcare financing needs</p>
         </div>
@@ -278,6 +333,15 @@ const DashboardPage = () => {
         </div>
       </div>
     </div>
+  )
+}
+
+const DashboardPage = () => {
+  return (
+    // --- Suspense se wrap karo ---
+    <Suspense fallback={<div>Loading...</div>}>
+      <DashboardContent />
+    </Suspense>
   )
 }
 

@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth } from '../../../../../../contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import InputField from '../../components/InputField'
+import InputField from '../../../../../../components/InputField'
+import { checkEligibilityAndGetOffers } from '../../../../../../services/apiService'
 
 const LoanStartPage = () => {
   const [phone, setPhone] = useState('')
@@ -20,38 +21,9 @@ const LoanStartPage = () => {
     setLoading(true)
 
     try {
-      const response = await fetch('/api/loan/check-eligibility', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ phone })
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        // Create session token for this loan application
-        localStorage.setItem('loanSessionToken', data.sessionToken)
-        localStorage.setItem('loanPhone', phone)
-
-        // Route based on loan type
-        switch (data.loanType) {
-          case 'pre-approved':
-            router.push('/loan/preapproved')
-            break
-          case 'credit-card':
-            router.push('/loan/creditcard')
-            break
-          case 'manual':
-          default:
-            router.push('/loan/manual')
-            break
-        }
-      } else {
-        setError(data.message || 'Failed to check eligibility')
-      }
+      const data = await checkEligibilityAndGetOffers(token, 50000)
+      // This entry screen is deprecated; route to treatment to start the unified flow
+      router.push('/loan/treatment')
     } catch (err) {
       setError('An error occurred. Please try again.')
     } finally {
